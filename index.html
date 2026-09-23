@@ -3,178 +3,276 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ระบบติดตามระดับน้ำและอัตราการไหล 8 ศูนย์อุทกวิทยา</title>
+  <title>ระบบติดตามระดับน้ำและอัตราการไหล (ศูนย์อุทกวิทยา 1-8)</title>
+  
+  <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Leaflet CSS & JS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
   <style>
-    #map { height: calc(100vh - 65px); }
+    /* ปรับความสูงของแผนที่ให้เต็มหน้าจอภายใต้ Header */
+    #map { 
+      height: calc(100vh - 64px); 
+      width: 100%;
+    }
+
+    /* ปรับแต่ง Label ชื่อสถานีที่อยู่บนหมุดแผนที่ */
+    .station-map-label {
+      background-color: rgba(255, 255, 255, 0.9) !important;
+      border: 1px solid #2563eb !important;
+      border-radius: 4px !important;
+      color: #1e3a8a !important;
+      font-size: 10px !important;
+      font-weight: 700 !important;
+      padding: 1px 5px !important;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.3) !important;
+      white-space: nowrap !important;
+    }
+
+    /* Custom Color Markers (วงกลมเปลี่ยนสีตามสถานะ) */
+    .custom-marker {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      border: 2px solid white;
+      box-shadow: 0 0 4px rgba(0,0,0,0.5);
+    }
+    .marker-normal { background-color: #22c55e; }  /* เขียว */
+    .marker-warning { background-color: #f97316; } /* ส้ม */
+    .marker-danger { background-color: #ef4444; }  /* แดง */
   </style>
 </head>
-<body class="bg-gray-100 font-sans">
+<body class="bg-gray-100 font-sans overflow-hidden">
 
-  <!-- Header Bar -->
-  <header class="bg-blue-900 text-white px-6 py-3 flex justify-between items-center shadow-lg">
+  <!-- Header -->
+  <header class="bg-blue-900 text-white h-16 px-4 flex justify-between items-center shadow-lg relative z-20">
     <div class="flex items-center space-x-3">
-      <h1 class="text-lg font-bold">แผนที่ติดตามระดับน้ำและอัตราการไหล (ศูนย์อุทกวิทยา 1-8)</h1>
+      <div class="bg-blue-600 p-2 rounded-lg shadow">
+        <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"></path>
+        </svg>
+      </div>
+      <div>
+        <h1 class="text-lg md:text-xl font-bold leading-tight">แผนที่ติดตามระดับน้ำและอัตราการไหล (ศูนย์อุทกวิทยา 1-8)</h1>
+        <p class="text-xs text-blue-200">ข้อมูลเรียลไทม์จากระบบศูนย์อุทกวิทยา กรมชลประทาน</p>
+      </div>
     </div>
-    <div id="summaryBadge" class="text-xs space-x-2">
-      <span class="bg-green-600 px-2 py-1 rounded">ปกติ: <b id="countNormal">0</b></span>
-      <span class="bg-yellow-600 px-2 py-1 rounded">เฝ้าระวัง: <b id="countWarning">0</b></span>
-      <span class="bg-red-600 px-2 py-1 rounded">ล้นตลิ่ง: <b id="countDanger">0</b></span>
+
+    <!-- บัตรสรุปสถานะน้ำ -->
+    <div class="hidden sm:flex items-center space-x-2 text-xs">
+      <div class="bg-green-600/30 border border-green-400/40 px-3 py-1 rounded-full text-green-200">
+        ปกติ: <span id="countNormal" class="font-bold text-white">0</span>
+      </div>
+      <div class="bg-orange-600/30 border border-orange-400/40 px-3 py-1 rounded-full text-orange-200">
+        เฝ้าระวัง: <span id="countWarning" class="font-bold text-white">0</span>
+      </div>
+      <div class="bg-red-600/30 border border-red-400/40 px-3 py-1 rounded-full text-red-200">
+        ล้นตลิ่ง: <span id="countDanger" class="font-bold text-white">0</span>
+      </div>
     </div>
   </header>
 
-  <div class="grid grid-cols-1 md:grid-cols-4">
-    <!-- Side Filter & Detail Panel -->
-    <aside class="p-4 bg-white shadow-md h-[calc(100vh-65px)] overflow-y-auto">
-      <h2 class="font-bold text-gray-700 mb-3">กรองตามศูนย์อุทกวิทยา</h2>
-      <select id="regionSelect" class="w-full border rounded-lg p-2 mb-4 text-sm focus:ring-2 focus:ring-blue-500">
-        <option value="all">-- รวมทุกศูนย์ ( Hyd01 - Hyd08 ) --</option>
-        <option value="Hyd01">ศูนย์อุทกวิทยาภาคเหนือตอนบน (Hyd01)</option>
-        <option value="Hyd02">ศูนย์อุทกวิทยาภาคเหนือตอนล่าง (Hyd02)</option>
-        <option value="Hyd03">ศูนย์อุทกวิทยาภาคตะวันออกเฉียงเหนือตอนบน (Hyd03)</option>
-        <option value="Hyd04">ศูนย์อุทกวิทยาภาคตะวันออกเฉียงเหนือตอนล่าง (Hyd04)</option>
-        <option value="Hyd05">ศูนย์อุทกวิทยาภาคกลาง (Hyd05)</option>
-        <option value="Hyd06">ศูนย์อุทกวิทยาภาคตะวันออก (Hyd06)</option>
-        <option value="Hyd07">ศูนย์อุทกวิทยาภาคตะวันตก(Hyd07)</option>
-        <option value="Hyd08">ศูนย์อุทกวิทยาภาคใต้ (Hyd08)</option>
-      </select>
+  <!-- Main Content Area -->
+  <div class="flex flex-col md:flex-row h-[calc(100vh-64px)] w-full">
 
-      <hr class="my-4">
-
-      <div id="stationDetail">
-        <p class="text-sm text-gray-500 italic">คลิกเลือกหมุดบนแผนที่ เพื่อดูรายละเอียดระดับน้ำและอัตราการไหล</p>
+    <!-- Sidebar ตัวกรอง & รายละเอียด -->
+    <aside class="w-full md:w-80 lg:w-96 bg-white border-r shadow-md z-10 p-4 overflow-y-auto flex-shrink-0">
+      
+      <!-- Filter ศูนย์ -->
+      <div class="mb-4">
+        <label for="centerFilter" class="block text-sm font-semibold text-gray-700 mb-1">กรองตามศูนย์อุทกวิทยา</label>
+        <select id="centerFilter" class="w-full bg-gray-50 border border-gray-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-medium">
+          <option value="all">-- รวมทุกศูนย์ ( Hyd01 - Hyd08 ) --</option>
+          <option value="1">ศูนย์อุทกวิทยาภาคเหนือตอนบน (Hyd01)</option>
+          <option value="2">ศูนย์อุทกวิทยาภาคเหนือตอนล่าง (Hyd02)</option>
+          <option value="3">ศูนย์อุทกวิทยาภาคตะวันออกเฉียงเหนือตอนบน (Hyd03)</option>
+          <option value="4">ศูนย์อุทกวิทยาภาคตะวันออกเฉียงเหนือตอนล่าง (Hyd04)</option>
+          <option value="5">ศูนย์อุทกวิทยาภาคกลาง (Hyd05)</option>
+          <option value="6">ศูนย์อุทกวิทยาภาคตะวันออก (Hyd06)</option>
+          <option value="7">ศูนย์อุทกวิทยาภาคใต้ตอนบน (Hyd07)</option>
+          <option value="8">ศูนย์อุทกวิทยาภาคใต้ตอนล่าง (Hyd08)</option>
+        </select>
       </div>
+
+      <hr class="my-3">
+
+      <!-- ส่วนแสดงข้อมูลเมื่อคลิกเลือกสถานี -->
+      <div id="stationDetail">
+        <div class="text-center py-8 text-gray-400">
+          <svg class="w-12 h-12 mx-auto mb-2 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path>
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path>
+          </svg>
+          <p class="text-sm">คลิกเลือกหมุดบนแผนที่ เพื่อดูรายละเอียดระดับน้ำและอัตราการไหล</p>
+        </div>
+      </div>
+
     </aside>
 
-    <!-- Map View -->
-    <main class="md:col-span-3">
+    <!-- แผนที่ Leaflet -->
+    <main class="flex-1 relative h-full">
       <div id="map"></div>
     </main>
+
   </div>
 
+  <!-- JavaScript -->
   <script>
-    // สร้างแผนที่ประเทศไทย
-    const map = L.map('map').setView([13.7367, 100.5231], 6);
+    // 1. ตั้งค่าแผนที่กึ่งกลางประเทศไทย
+    const map = L.map('map').setView([13.736717, 100.523186], 6);
+
+    // เลเยอร์แผนที่ OpenStreetMap
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '© OpenStreetMap contributors'
+      maxZoom: 18,
+      attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors | กรมชลประทาน'
     }).addTo(map);
 
-    let allStations = [];
-    let markerGroup = L.layerGroup().addTo(map);
+    let allStationsData = [];
+    let currentLayerGroup = L.layerGroup().addTo(map);
 
-    // ดึงข้อมูล JSON ที่ Python สแครปมาได้
-fetch('./hyd_merged_data.json')
-  .then(response => response.json())
-  .then(data => {
-    console.log("โหลดข้อมูลสำเร็จ:", data.length, "รายการ");
-    
-    let validStationCount = 0;
+    // 2. ฟังก์ชันวาดหมุดบนแผนที่
+    function renderMarkers(selectedCenter = "all") {
+      currentLayerGroup.clearLayers();
 
-    data.forEach(station => {
-      // แปลงค่า Lat / Lng เป็น float ชัวร์ๆ
-      const lat = parseFloat(station.lat);
-      const lng = parseFloat(station.lng);
+      let nNormal = 0;
+      let nWarning = 0;
+      let nDanger = 0;
+      let validPointCount = 0;
 
-      // วาดหมุดเฉพาะจุดที่มีพิกัด Lat/Lng ถูกต้องเท่านั้น
-      if (!isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0) {
-        validStationCount++;
+      allStationsData.forEach(station => {
+        const lat = parseFloat(station.lat);
+        const lng = parseFloat(station.lng);
 
-        // ปรับสีหมุดตามสถานะ (ถ้ามี)
-        let markerColor = 'blue';
-        if (station.status === 'warning') markerColor = 'orange';
-        if (station.status === 'critical') markerColor = 'red';
+        // ดึงเลขศูนย์อุทกวิทยาจากข้อมูล
+        const stationRegion = String(station.region || station.center || '').replace(/\D/g, '');
 
-        // ป๊อปอัปแสดงรายละเอียด
-        const popupContent = `
-          <div style="font-family: sans-serif; font-size: 14px;">
-            <b style="font-size: 16px; color: #1e3a8a;">สถานี ${station.code || '-'}</b><br/>
-            <b>ชื่อสถานี:</b> ${station.name || '-'}<br/>
-            <b>แม่น้ำ/ลำน้ำ:</b> ${station.river || '-'}<br/>
-            <b>จังหวัด:</b> ${station.province || '-'}<br/>
-            <hr style="margin: 6px 0; border: 0; border-top: 1px solid #ccc;"/>
-            <b>ระดับน้ำ:</b> <span style="color: blue; font-weight: bold;">${station.water_level || '-'}</span> ม.รทก.<br/>
-            <b>อัตราการไหล:</b> ${station.discharge || '-'} ลบ.ม./วินาที
-          </div>
-        `;
-
-        // สร้าง Marker บนแผนที่
-        L.marker([lat, lng])
-          .addTo(map)
-          .bindPopup(popupContent);
-      }
-    });
-
-    console.log(`ปักหมุดบนแผนที่สำเร็จ: ${validStationCount} จุด`);
-  })
-  .catch(err => console.error("Error loading JSON:", err));
-
-
-    function renderMap(regionFilter) {
-      markerGroup.clearLayers();
-      let normal = 0, warning = 0, danger = 0;
-
-      allStations.forEach(st => {
-        if (regionFilter === "all" || st.region === regionFilter) {
+        // เงื่อนไข Filter เลือกศูนย์
+        if (selectedCenter === "all" || stationRegion === selectedCenter) {
           
-          let color = "#10B981"; // Green (ปกติ)
-          if (st.status === "warning") { color = "#F59E0B"; warning++; }
-          else if (st.status === "danger") { color = "#EF4444"; danger++; }
-          else { normal++; }
+          if (!isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0) {
+            validPointCount++;
 
-          const icon = L.divIcon({
-            html: `<div style="background-color:${color}; width:14px; height:14px; border-radius:50%; border:2px solid white; box-shadow:0 0 4px rgba(0,0,0,0.4);"></div>`,
-            className: ''
-          });
+            // กำหนดสไตล์สถานะ
+            let markerClass = "marker-normal";
+            if (station.status === "danger") {
+              markerClass = "marker-danger";
+              nDanger++;
+            } else if (station.status === "warning") {
+              markerClass = "marker-warning";
+              nWarning++;
+            } else {
+              nNormal++;
+            }
 
-          const marker = L.marker([st.lat, st.lng], { icon: icon });
-          
-          marker.bindPopup(`
-            <div class="text-sm font-sans">
-              <p class="font-bold text-blue-900">${st.code} - ${st.name}</p>
-              <p class="text-xs text-gray-600">${st.province} (${st.river})</p>
-              <hr class="my-1">
-              <p><b>ระดับน้ำ:</b> ${st.water_level} ม.</p>
-              <p><b>ระดับตลิ่ง:</b> ${st.bank_level} ม.</p>
-              <p><b>อัตราการไหล (Q):</b> ${st.discharge} ลบ.ม./วิ</p>
-            </div>
-          `);
+            // ไอคอนวงกลมตามสีสถานะ
+            const customIcon = L.divIcon({
+              className: 'custom-div-icon',
+              html: `<div class="custom-marker ${markerClass}"></div>`,
+              iconSize: [14, 14],
+              iconAnchor: [7, 7]
+            });
 
-          marker.on('click', () => showDetail(st));
-          markerGroup.addLayer(marker);
+            // ป้ายข้อความ Label แสดงบนหมุด
+            const stationLabel = `${station.code || ''} ${station.name || ''}`.trim();
+
+            // ป๊อปอัปเมื่อคลิกหมุด
+            const popupContent = `
+              <div class="font-sans text-xs">
+                <h4 class="font-bold text-blue-900 text-sm mb-1">${station.code || '-'} ${station.name || ''}</h4>
+                <p class="text-gray-600 mb-1"><b>แม่น้ำ:</b> ${station.river || '-'} | <b>จังหวัด:</b> ${station.province || '-'}</p>
+                <hr class="my-1">
+                <p class="text-sm"><b>ระดับน้ำ:</b> <span class="text-blue-700 font-bold">${station.water_level || '-'}</span> ม.รทก.</p>
+                <p class="text-sm"><b>ตลิ่ง:</b> ${station.bank_level || '-'} ม.รทก.</p>
+                <p class="text-sm"><b>อัตราการไหล (Q):</b> <span class="text-blue-700 font-bold">${station.discharge || '-'}</span> ลบ.ม./วิ</p>
+              </div>
+            `;
+
+            // สร้าง Marker
+            const marker = L.marker([lat, lng], { icon: customIcon })
+              .bindPopup(popupContent)
+              .bindTooltip(stationLabel, {
+                permanent: true,
+                direction: 'top',
+                offset: [0, -8],
+                className: 'station-map-label'
+              });
+
+            // เมื่อคลิกหมุด ให้แสดงรายละเอียดที่ Sidebar
+            marker.on('click', () => showStationDetail(station));
+
+            currentLayerGroup.addLayer(marker);
+          }
         }
       });
 
-      document.getElementById('countNormal').innerText = normal;
-      document.getElementById('countWarning').innerText = warning;
-      document.getElementById('countDanger').innerText = danger;
+      // อัปเดตตัวเลขสรุป
+      document.getElementById('countNormal').innerText = nNormal;
+      document.getElementById('countWarning').innerText = nWarning;
+      document.getElementById('countDanger').innerText = nDanger;
     }
 
-    function showDetail(st) {
+    // 3. ฟังก์ชันแสดงข้อมูลรายละเอียดตรง Sidebar
+    function showStationDetail(st) {
       const detailDiv = document.getElementById('stationDetail');
+      
+      let statusBadge = `<span class="bg-green-100 text-green-800 text-xs font-semibold px-2.5 py-0.5 rounded border border-green-200">✅ ปกติ</span>`;
+      if (st.status === 'warning') {
+        statusBadge = `<span class="bg-orange-100 text-orange-800 text-xs font-semibold px-2.5 py-0.5 rounded border border-orange-200">⚠️ เฝ้าระวัง</span>`;
+      } else if (st.status === 'danger') {
+        statusBadge = `<span class="bg-red-100 text-red-800 text-xs font-semibold px-2.5 py-0.5 rounded border border-red-200">🚨 ล้นตลิ่ง / วิกฤต</span>`;
+      }
+
       detailDiv.innerHTML = `
-        <div class="p-3 bg-blue-50 rounded-lg border border-blue-200">
-          <span class="text-xs font-bold px-2 py-0.5 rounded ${st.status === 'danger' ? 'bg-red-500 text-white' : st.status === 'warning' ? 'bg-yellow-500 text-white' : 'bg-green-500 text-white'}">
-            ${st.status === 'danger' ? 'ล้นตลิ่ง' : st.status === 'warning' ? 'เฝ้าระวัง' : 'ปกติ'}
-          </span>
-          <h3 class="font-bold text-base text-blue-900 mt-2">${st.code}</h3>
-          <p class="text-sm font-medium text-gray-800">${st.name}</p>
-          <p class="text-xs text-gray-500">${st.province} | แม่น้ำ${st.river}</p>
-          <p class="text-xs text-gray-500">ศูนย์อุทกวิทยา: ${st.region}</p>
-          <hr class="my-2">
-          <div class="space-y-1 text-sm">
-            <p class="flex justify-between"><span>ระดับน้ำปัจจุบัน:</span> <b class="text-blue-700">${st.water_level} ม.</b></p>
-            <p class="flex justify-between"><span>ระดับตลิ่ง:</span> <b>${st.bank_level} ม.</b></p>
-            <p class="flex justify-between"><span>อัตราการไหล (Q):</span> <b class="text-blue-700">${st.discharge} ลบ.ม./วิ</b></p>
+        <div class="mb-3">${statusBadge}</div>
+        <h3 class="font-bold text-lg text-blue-950">${st.code || '-'}</h3>
+        <p class="text-sm font-semibold text-gray-700">${st.name || '-'}</p>
+        <p class="text-xs text-gray-500 mb-3">แม่น้ำ${st.river || '-'} จ.${st.province || '-'}</p>
+        
+        <div class="space-y-2 text-sm bg-gray-50 p-3 rounded-lg border border-gray-200">
+          <div class="flex justify-between border-b pb-1">
+            <span class="text-gray-600">ระดับน้ำปัจจุบัน:</span>
+            <span class="font-bold text-blue-700">${st.water_level || '-'} ม.รทก.</span>
+          </div>
+          <div class="flex justify-between border-b pb-1">
+            <span class="text-gray-600">ระดับตลิ่ง:</span>
+            <span class="font-bold text-gray-800">${st.bank_level || '-'} ม.รทก.</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-gray-600">อัตราการไหล (Q):</span>
+            <span class="font-bold text-blue-700">${st.discharge || '-'} ลบ.ม./วินาที</span>
           </div>
         </div>
       `;
     }
 
-    document.getElementById('regionSelect').addEventListener('change', (e) => {
-      renderMap(e.target.value);
+    // 4. โหลดข้อมูลจากไฟล์ JSON
+    fetch('./hyd_merged_data.json')
+      .then(response => {
+        if (!response.ok) throw new Error('ไม่พบไฟล์ hyd_merged_data.json');
+        return response.json();
+      })
+      .then(data => {
+        allStationsData = data;
+        console.log(`โหลดข้อมูลสถานีสำเร็จ: ${data.length} รายการ`);
+        renderMarkers("all");
+      })
+      .catch(err => {
+        console.error('Error loading JSON:', err);
+        document.getElementById('stationDetail').innerHTML = `
+          <div class="p-3 bg-red-50 text-red-700 rounded-lg text-xs border border-red-200">
+            ❌ ไม่พบไฟล์ข้อมูล <b>hyd_merged_data.json</b> กรุณาตรวจสอบว่ามีไฟล์นี้อยู่ในโฟลเดอร์ Root บน GitHub หรือไม่
+          </div>
+        `;
+      });
+
+    // 5. Event เลือกกรองศูนย์อุทกวิทยา
+    document.getElementById('centerFilter').addEventListener('change', (e) => {
+      renderMarkers(e.target.value);
     });
   </script>
+
 </body>
 </html>
