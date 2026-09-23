@@ -37,8 +37,8 @@
         <option value="Hyd04">ศูนย์อุทกวิทยาภาคตะวันออกเฉียงเหนือตอนล่าง (Hyd04)</option>
         <option value="Hyd05">ศูนย์อุทกวิทยาภาคกลาง (Hyd05)</option>
         <option value="Hyd06">ศูนย์อุทกวิทยาภาคตะวันออก (Hyd06)</option>
-        <option value="Hyd07">ศูนย์อุทกวิทยาภาคใต้ตอนบน (Hyd07)</option>
-        <option value="Hyd08">ศูนย์อุทกวิทยาภาคใต้ตอนล่าง (Hyd08)</option>
+        <option value="Hyd07">ศูนย์อุทกวิทยาภาคตะวันตก(Hyd07)</option>
+        <option value="Hyd08">ศูนย์อุทกวิทยาภาคใต้ (Hyd08)</option>
       </select>
 
       <hr class="my-4">
@@ -66,19 +66,50 @@
 
     // ดึงข้อมูล JSON ที่ Python สแครปมาได้
 fetch('./hyd_merged_data.json')
-  .then(response => {
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-    return response.json();
-  })
+  .then(response => response.json())
   .then(data => {
-    // โค้ดแสดงผลหมุดแผนที่...
+    console.log("โหลดข้อมูลสำเร็จ:", data.length, "รายการ");
+    
+    let validStationCount = 0;
+
+    data.forEach(station => {
+      // แปลงค่า Lat / Lng เป็น float ชัวร์ๆ
+      const lat = parseFloat(station.lat);
+      const lng = parseFloat(station.lng);
+
+      // วาดหมุดเฉพาะจุดที่มีพิกัด Lat/Lng ถูกต้องเท่านั้น
+      if (!isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0) {
+        validStationCount++;
+
+        // ปรับสีหมุดตามสถานะ (ถ้ามี)
+        let markerColor = 'blue';
+        if (station.status === 'warning') markerColor = 'orange';
+        if (station.status === 'critical') markerColor = 'red';
+
+        // ป๊อปอัปแสดงรายละเอียด
+        const popupContent = `
+          <div style="font-family: sans-serif; font-size: 14px;">
+            <b style="font-size: 16px; color: #1e3a8a;">สถานี ${station.code || '-'}</b><br/>
+            <b>ชื่อสถานี:</b> ${station.name || '-'}<br/>
+            <b>แม่น้ำ/ลำน้ำ:</b> ${station.river || '-'}<br/>
+            <b>จังหวัด:</b> ${station.province || '-'}<br/>
+            <hr style="margin: 6px 0; border: 0; border-top: 1px solid #ccc;"/>
+            <b>ระดับน้ำ:</b> <span style="color: blue; font-weight: bold;">${station.water_level || '-'}</span> ม.รทก.<br/>
+            <b>อัตราการไหล:</b> ${station.discharge || '-'} ลบ.ม./วินาที
+          </div>
+        `;
+
+        // สร้าง Marker บนแผนที่
+        L.marker([lat, lng])
+          .addTo(map)
+          .bindPopup(popupContent);
+      }
+    });
+
+    console.log(`ปักหมุดบนแผนที่สำเร็จ: ${validStationCount} จุด`);
   })
-  .catch(error => {
-    console.error('Error loading JSON:', error);
-    document.getElementById('map').innerHTML = `<div class="p-4 text-red-600">ไม่พบไฟล์ hyd_merged_data.json หรือเกิดข้อผิดพลาดในการโหลดข้อมูล</div>`;
-  });
+  .catch(err => console.error("Error loading JSON:", err));
+
 
     function renderMap(regionFilter) {
       markerGroup.clearLayers();
