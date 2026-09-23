@@ -65,16 +65,20 @@
     let markerGroup = L.layerGroup().addTo(map);
 
     // ดึงข้อมูล JSON ที่ Python สแครปมาได้
-    fetch('hyd_merged_data.json')
-      .then(res => res.json())
-      .then(data => {
-        allStations = data;
-        renderMap("all");
-      })
-      .catch(err => {
-        console.error("Error loading JSON:", err);
-        alert("ไม่พบไฟล์ hyd_merged_data.json กรุณารันสคริปต์ Python ก่อนครับ");
-      });
+fetch('./hyd_merged_data.json')
+  .then(response => {
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    return response.json();
+  })
+  .then(data => {
+    // โค้ดแสดงผลหมุดแผนที่...
+  })
+  .catch(error => {
+    console.error('Error loading JSON:', error);
+    document.getElementById('map').innerHTML = `<div class="p-4 text-red-600">ไม่พบไฟล์ hyd_merged_data.json หรือเกิดข้อผิดพลาดในการโหลดข้อมูล</div>`;
+  });
 
     function renderMap(regionFilter) {
       markerGroup.clearLayers();
