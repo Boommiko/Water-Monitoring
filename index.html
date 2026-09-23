@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ระบบติดตามระดับน้ำและอัตราการไหล 8 ศูนย์อุทกวิทยา</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    #map { height: calc(100vh - 65px); }
+  </style>
+</head>
+<body class="bg-gray-100 font-sans">
+
+  <!-- Header Bar -->
+  <header class="bg-blue-900 text-white px-6 py-3 flex justify-between items-center shadow-lg">
+    <div class="flex items-center space-x-3">
+      <h1 class="text-lg font-bold">แผนที่ติดตามระดับน้ำและอัตราการไหล (ศูนย์อุทกวิทยา 1-8)</h1>
+    </div>
+    <div id="summaryBadge" class="text-xs space-x-2">
+      <span class="bg-green-600 px-2 py-1 rounded">ปกติ: <b id="countNormal">0</b></span>
+      <span class="bg-yellow-600 px-2 py-1 rounded">เฝ้าระวัง: <b id="countWarning">0</b></span>
+      <span class="bg-red-600 px-2 py-1 rounded">ล้นตลิ่ง: <b id="countDanger">0</b></span>
+    </div>
+  </header>
+
+  <div class="grid grid-cols-1 md:grid-cols-4">
+    <!-- Side Filter & Detail Panel -->
+    <aside class="p-4 bg-white shadow-md h-[calc(100vh-65px)] overflow-y-auto">
+      <h2 class="font-bold text-gray-700 mb-3">กรองตามศูนย์อุทกวิทยา</h2>
+      <select id="regionSelect" class="w-full border rounded-lg p-2 mb-4 text-sm focus:ring-2 focus:ring-blue-500">
+        <option value="all">-- รวมทุกศูนย์ ( Hyd01 - Hyd08 ) --</option>
+        <option value="Hyd01">ศูนย์อุทกวิทยาภาคเหนือตอนบน (Hyd01)</option>
+        <option value="Hyd02">ศูนย์อุทกวิทยาภาคเหนือตอนล่าง (Hyd02)</option>
+        <option value="Hyd03">ศูนย์อุทกวิทยาภาคตะวันออกเฉียงเหนือตอนบน (Hyd03)</option>
+        <option value="Hyd04">ศูนย์อุทกวิทยาภาคตะวันออกเฉียงเหนือตอนล่าง (Hyd04)</option>
+        <option value="Hyd05">ศูนย์อุทกวิทยาภาคกลาง (Hyd05)</option>
+        <option value="Hyd06">ศูนย์อุทกวิทยาภาคตะวันออก (Hyd06)</option>
+        <option value="Hyd07">ศูนย์อุทกวิทยาภาคใต้ตอนบน (Hyd07)</option>
+        <option value="Hyd08">ศูนย์อุทกวิทยาภาคใต้ตอนล่าง (Hyd08)</option>
+      </select>
+
+      <hr class="my-4">
+
+      <div id="stationDetail">
+        <p class="text-sm text-gray-500 italic">คลิกเลือกหมุดบนแผนที่ เพื่อดูรายละเอียดระดับน้ำและอัตราการไหล</p>
+      </div>
+    </aside>
+
+    <!-- Map View -->
+    <main class="md:col-span-3">
+      <div id="map"></div>
+    </main>
+  </div>
+
+  <script>
+    // สร้างแผนที่ประเทศไทย
+    const map = L.map('map').setView([13.7367, 100.5231], 6);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap contributors'
+    }).addTo(map);
+
+    let allStations = [];
+    let markerGroup = L.layerGroup().addTo(map);
+
+    // ดึงข้อมูล JSON ที่ Python สแครปมาได้
+    fetch('hyd_merged_data.json')
+      .then(res => res.json())
+      .then(data => {
+        allStations = data;
+        renderMap("all");
+      })
+      .catch(err => {
+        console.error("Error loading JSON:", err);
+        alert("ไม่พบไฟล์ hyd_merged_data.json กรุณารันสคริปต์ Python ก่อนครับ");
+      });
+
+    function renderMap(regionFilter) {
+      markerGroup.clearLayers();
+      let normal = 0, warning = 0, danger = 0;
+
+      allStations.forEach(st => {
+        if (regionFilter === "all" || st.region === regionFilter) {
+          
+          let color = "#10B981"; // Green (ปกติ)
+          if (st.status === "warning") { color = "#F59E0B"; warning++; }
+          else if (st.status === "danger") { color = "#EF4444"; danger++; }
+          else { normal++; }
+
+          const icon = L.divIcon({
+            html: `<div style="background-color:${color}; width:14px; height:14px; border-radius:50%; border:2px solid white; box-shadow:0 0 4px rgba(0,0,0,0.4);"></div>`,
+            className: ''
+          });
+
+          const marker = L.marker([st.lat, st.lng], { icon: icon });
+          
+          marker.bindPopup(`
+            <div class="text-sm font-sans">
+              <p class="font-bold text-blue-900">${st.code} - ${st.name}</p>
+              <p class="text-xs text-gray-600">${st.province} (${st.river})</p>
+              <hr class="my-1">
+              <p><b>ระดับน้ำ:</b> ${st.water_level} ม.</p>
+              <p><b>ระดับตลิ่ง:</b> ${st.bank_level} ม.</p>
+              <p><b>อัตราการไหล (Q):</b> ${st.discharge} ลบ.ม./วิ</p>
+            </div>
+          `);
+
+          marker.on('click', () => showDetail(st));
+          markerGroup.addLayer(marker);
+        }
+      });
+
+      document.getElementById('countNormal').innerText = normal;
+      document.getElementById('countWarning').innerText = warning;
+      document.getElementById('countDanger').innerText = danger;
+    }
+
+    function showDetail(st) {
+      const detailDiv = document.getElementById('stationDetail');
+      detailDiv.innerHTML = `
+        <div class="p-3 bg-blue-50 rounded-lg border border-blue-200">
+          <span class="text-xs font-bold px-2 py-0.5 rounded ${st.status === 'danger' ? 'bg-red-500 text-white' : st.status === 'warning' ? 'bg-yellow-500 text-white' : 'bg-green-500 text-white'}">
+            ${st.status === 'danger' ? 'ล้นตลิ่ง' : st.status === 'warning' ? 'เฝ้าระวัง' : 'ปกติ'}
+          </span>
+          <h3 class="font-bold text-base text-blue-900 mt-2">${st.code}</h3>
+          <p class="text-sm font-medium text-gray-800">${st.name}</p>
+          <p class="text-xs text-gray-500">${st.province} | แม่น้ำ${st.river}</p>
+          <p class="text-xs text-gray-500">ศูนย์อุทกวิทยา: ${st.region}</p>
+          <hr class="my-2">
+          <div class="space-y-1 text-sm">
+            <p class="flex justify-between"><span>ระดับน้ำปัจจุบัน:</span> <b class="text-blue-700">${st.water_level} ม.</b></p>
+            <p class="flex justify-between"><span>ระดับตลิ่ง:</span> <b>${st.bank_level} ม.</b></p>
+            <p class="flex justify-between"><span>อัตราการไหล (Q):</span> <b class="text-blue-700">${st.discharge} ลบ.ม./วิ</b></p>
+          </div>
+        </div>
+      `;
+    }
+
+    document.getElementById('regionSelect').addEventListener('change', (e) => {
+      renderMap(e.target.value);
+    });
+  </script>
+</body>
+</html>
